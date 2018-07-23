@@ -20,8 +20,6 @@ mongo_settings = {
     'URI': 'mongodb://localhost:27017',
     'DATABASE': 'amazon',
 
-    'RESULTS_COLLECTION': 'items_v1',
-    'BRANDS_COLLECTION': 'items',
     'PROXIES_COLLECTION': 'proxies',
 
     'ITEM_PIPELINES': {

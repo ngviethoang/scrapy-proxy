@@ -31,7 +31,7 @@ class MongoPipeline(object):
     def process_item(self, item, spider):
         for proxy in item['proxies']:
             proxy_item = {
-                'url': item['url'],
+                # 'url': item['url'],
                 'spider': spider.name,
                 'proxy': proxy,
                 'updated_at': datetime.now()

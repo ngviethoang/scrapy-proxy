@@ -3,7 +3,8 @@
 
 import pymongo
 from crawl_proxy.custom_settings import mongo_settings
-from flask import Flask, request, jsonify, abort
+from flask import Flask, request, jsonify
+from datetime import datetime
 
 
 client = pymongo.MongoClient(mongo_settings['URI'])
@@ -56,7 +57,8 @@ def update_proxy():
         return 'Error', 500
     else:
         db[mongo_settings['PROXIES_COLLECTION']].update_one(filter={'proxy': proxy},
-                                                            update={'$set': {'run_time': run_time}})
+                                                            update={'$set': {'run_time': run_time,
+                                                                             'updated_at': datetime.now()}})
         return 'Success', 200
 
 
