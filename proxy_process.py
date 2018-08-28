@@ -1,38 +1,47 @@
 # -*- coding: utf-8 -*-
 """ Calculate proxies' run time and update to database """
 
-import pymongo
-from crawl_proxy.custom_settings import mongo_settings
 import aiohttp
 import asyncio
 from datetime import datetime
+from crawl_proxy.helper.db import get_mysql_connection
 
-mongo_uri = mongo_settings['URI']
-mongo_db = mongo_settings['DATABASE']
-collection_name = mongo_settings['PROXIES_COLLECTION']
+db = get_mysql_connection()
 
-client = pymongo.MongoClient(mongo_uri)
-db = client[mongo_db]
+test_url = 'https://www.teepublic.com/'
 
 
 # get newest proxies from database
-def get_proxies(limit):
-    find = {}  # run all proxies
-    find = {'run_time': {'$ne': 100}}  # run unprocessed and good proxies only
-    # find = {'run_time': None}  # only run unprocessed proxies
+def get_proxies(limit=None):
+    query = """
+        SELECT ip FROM proxies
+        WHERE response_time != 100 OR response_time IS NULL
+    """
 
-    proxies = db[collection_name].find(find).sort([('updated_at', -1)]).limit(limit)
-    proxies = [proxy['proxy'] for proxy in proxies]
+    if limit is not None:
+        query += "LIMIT {}".format(limit)
+
+    with db.cursor() as cursor:
+        cursor.execute(query)
+
+        proxies = cursor.fetchall()
+        proxies = [p[0] for p in proxies]
 
     return proxies
 
 
 # update proxy's run time to database
-def update_proxy(proxy, run_time):
-    print('{} {}'.format(proxy, run_time))
+def update_proxy(proxy, response_time):
+    print('{} {}'.format(proxy, response_time))
 
-    db[collection_name].update_one(filter={'proxy': proxy},
-                                   update={'$set': {'run_time': run_time, 'updated_at': datetime.now()}})
+    with db.cursor() as cursor:
+        cursor.execute("""
+            UPDATE proxies 
+            SET response_time = %s, updated_at = %s
+            WHERE ip = %s
+        """, (response_time, datetime.now(), proxy))
+
+        db.commit()
 
 
 # send request to get proxy's run time
@@ -40,11 +49,25 @@ async def fetch(session, proxy):
     start_time = datetime.now()
 
     try:
-        async with session.get(url='https://www.amazon.com/', proxy=proxy):
-            run_time = datetime.now() - start_time
-            run_time = run_time.seconds
+        async with session.get(url=test_url, proxy=proxy) as response:
+            response_time = 100
 
-            update_proxy(proxy, run_time)
+            if response.status == 200:
+                content = bytearray()
+                while True:
+                    chunk = await response.content.read(100)
+                    if not chunk:
+                        break
+                    content += chunk
+                content = content.decode('utf-8')
+
+                if 'ROBOTS' not in content:
+                    response_time = datetime.now() - start_time
+                    response_time = response_time.microseconds / 1000000
+                else:
+                    print('captcha detected :(')
+
+            update_proxy(proxy, response_time)
 
     except (aiohttp.client_exceptions.ClientError, asyncio.TimeoutError) as e:
         print('{} {}'.format(proxy, e))
@@ -62,7 +85,7 @@ async def fetch_all(proxies):
     tasks = []
 
     # create instance of Semaphore
-    sem = asyncio.Semaphore(1000)
+    sem = asyncio.Semaphore(100)
 
     conn = aiohttp.TCPConnector(
         limit=1000,
@@ -70,7 +93,11 @@ async def fetch_all(proxies):
         ssl=False
     )
 
-    async with aiohttp.ClientSession(connector=conn, conn_timeout=20) as session:
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:50.0) Gecko/20100101 Firefox/50.0'
+    }
+
+    async with aiohttp.ClientSession(connector=conn, conn_timeout=20, headers=headers) as session:
         for proxy in proxies:
             task = asyncio.ensure_future(bound_fetch(sem, session, proxy))
             tasks.append(task)  # create list of tasks
@@ -79,7 +106,7 @@ async def fetch_all(proxies):
 
 
 if __name__ == '__main__':
-    proxies = get_proxies(0)
+    proxies = get_proxies()
     print(len(proxies))
 
     start_time = datetime.now()
@@ -91,6 +118,3 @@ if __name__ == '__main__':
 
     loop.run_until_complete(future)  # loop until done
     loop.close()
-
-    run_time = datetime.now() - start_time
-    print('Run time: {}'.format(run_time))

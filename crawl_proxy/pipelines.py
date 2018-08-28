@@ -6,40 +6,25 @@
 # See: http://doc.scrapy.org/en/latest/topics/item-pipeline.html
 import pymongo
 from datetime import datetime
-from crawl_proxy.custom_settings import mongo_settings
-
-
-class CrawlProxyPipeline(object):
-    def process_item(self, item, spider):
-        return item
+from crawl_proxy.helper.db import get_mysql_connection
 
 
 class MongoPipeline(object):
 
     def __init__(self):
-        self.mongo_uri = mongo_settings['URI']
-        self.mongo_db = mongo_settings['DATABASE']
-        self.mongo_collection = mongo_settings['PROXIES_COLLECTION']
-
-    def open_spider(self, spider):
-        self.client = pymongo.MongoClient(self.mongo_uri)
-        self.db = self.client[self.mongo_db]
+        self.db = get_mysql_connection()
 
     def close_spider(self, spider):
-        self.client.close()
+        self.db.close()
 
     def process_item(self, item, spider):
+        print('insert {} proxies'.format(len(item['proxies'])))
         for proxy in item['proxies']:
-            proxy_item = {
-                # 'url': item['url'],
-                'spider': spider.name,
-                'proxy': proxy,
-                'updated_at': datetime.now()
-            }
+            current_time = datetime.now()
 
-            if 'type' in item:
-                proxy_item['type'] = item['type']
-
-            self.db[self.mongo_collection].update_one(filter={'proxy': proxy_item['proxy']},
-                                                      update={'$set': proxy_item},
-                                                      upsert=True)
+            with self.db.cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO proxies (ip, updated_at) VALUE (%s, %s)
+                    ON DUPLICATE KEY UPDATE updated_at=%s
+                """, (proxy, current_time, current_time))
+                self.db.commit()

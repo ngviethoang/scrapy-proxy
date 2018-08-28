@@ -1,14 +1,11 @@
 # -*- coding: utf-8 -*-
 import scrapy
-from crawl_proxy.custom_settings import mongo_settings
 
 
 class ProxylistMeSpider(scrapy.Spider):
     name = 'proxylist.me'
 
     start_urls = ['https://proxylist.me']
-
-    custom_settings = mongo_settings
 
     def parse(self, response):
         next_page = response.css('.pagination li.active + li a::attr(href)').extract_first()

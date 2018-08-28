@@ -27,4 +27,11 @@ mongo_settings = {
     }
 }
 
-custom_settings = dict(splash_settings, **mongo_settings)
+mysql_settings = {
+    "MYSQL_HOST": "45.79.107.74",
+    "MYSQL_USER": "pec91p_t33_es",
+    "MYSQL_PASSWD": "gLwHfkoeN6C0WBx",
+    "MYSQL_DB": "pec91p_t33_es"
+}
+
+custom_settings = dict(splash_settings, **mongo_settings, **mysql_settings)
